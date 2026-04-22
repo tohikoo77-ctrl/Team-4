@@ -1,6 +1,6 @@
 from import_export import resources, fields
 from import_export.widgets import ForeignKeyWidget
-from .models import BankCard, Transfer
+from .models.cart import BankCard, Transfer
 
 
 class CardResource(resources.ModelResource):

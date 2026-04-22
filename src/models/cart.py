@@ -1,7 +1,7 @@
 import re
 import uuid
 from datetime import date
-from django.db import models, transaction
+from django.db import models
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
 
@@ -102,18 +102,29 @@ class Transfer(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
-        if self.sender and self.receiver and self.sender == self.receiver:
+        # Ikkala karta ham ko'rsatilganini tekshirish
+        if not self.sender or not self.receiver:
+            raise ValidationError("O'tkazma uchun sender va receiver kartalari ko'rsatilishi shart.")
+
+        # O'ziga o'zi pul o'tkazmaslik
+        if self.sender == self.receiver:
             raise ValidationError("O'ziga o'zi pul o'tkazish mumkin emas.")
 
-        if self.sender and self.sender.balance < self.sending_amount:
-            raise ValidationError(f"Mablag' yetarli emas. Balans: {self.sender.balance}")
+        # Mablag' yetarli ekanligini tekshirish (Created holatida tekshiriladi)
+        if self.state == self.State.CREATED and self.sender.balance < self.sending_amount:
+            raise ValidationError(f"Mablag' yetarli emas. Joriy balans: {self.sender.balance} UZS")
 
     def save(self, *args, **kwargs):
+        # Unikal tranzaksiya ID yaratish
         if not self.ext_id:
             self.ext_id = f"tr-{uuid.uuid4()}"
+
+        # Agar receiving_amount bo'sh bo'lsa, uni sending_amount ga tenglash
         if not self.receiving_amount:
             self.receiving_amount = self.sending_amount
+
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"TR-{self.ext_id[:8]} | {self.state}"
+        return f"Transfer {self.ext_id} - {self.state}"

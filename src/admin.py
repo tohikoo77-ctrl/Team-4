@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
 # Modellaringiz va Resource fayllarini import qilish
-from .models import BankCard, Error, Transfer
+from .models.cart import BankCard, Error, Transfer
 from .Resurs import CardResource, TransferResource
 
 

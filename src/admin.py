@@ -3,7 +3,8 @@ from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
 # Modellaringiz va Resource fayllarini import qilish
-from .models.cart import BankCard, Error, Transfer
+from .models.cart import BankCard
+from .models.transfer_models import Error, Transfer
 from .Resurs import CardResource, TransferResource
 
 
@@ -81,15 +82,15 @@ class TransferAdmin(ImportExportModelAdmin):
 
     list_display = (
         'ext_id_short',
-        'sender',
-        'receiver',
+        'sender_card_number',
+        'receiver_card_number',
         'amount_with_currency',
         'state_tag',
         'created_at'
     )
 
     list_filter = ('state', 'currency', 'created_at')
-    search_fields = ('ext_id', 'sender__card_number', 'receiver__card_number')
+    search_fields = ('ext_id', 'sender_card_number', 'receiver_card_number')
 
     # Tahrirlab bo'lmaydigan maydonlar (Moliyaviy xavfsizlik uchun)
     readonly_fields = ('ext_id', 'created_at', 'updated_at', 'receiving_amount')
@@ -125,7 +126,7 @@ class TransferAdmin(ImportExportModelAdmin):
     # Admin panelda maydonlarni guruhlash (Fieldsets)
     fieldsets = (
         ('Asosiy ma\'lumotlar', {
-            'fields': ('ext_id', 'state', 'sender', 'receiver')
+            'fields': ('ext_id', 'state', 'sender_card_number', 'receiver_card_number')
         }),
         ('Pul miqdori va Valyuta', {
             'fields': ('sending_amount', 'receiving_amount', 'currency')

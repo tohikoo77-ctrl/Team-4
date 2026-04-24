@@ -59,6 +59,13 @@ def menu_user():
     )
 
 
+def menu_back():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="⬅️ Orqaga")]],
+        resize_keyboard=True
+    )
+
+
 def inline_updates():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Versiya 1.1", callback_data="v11"),
@@ -98,6 +105,20 @@ def get_cards(user):
 # HANDLERS
 # =========================
 
+# --- GLOBAL ORQAGA HANDLERI ---
+@dp.message(F.text == "⬅️ Orqaga")
+async def back_handler(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user = await get_user(data.get("user_id"))
+
+    await state.set_state(None)  # Holatni bekor qilish
+
+    if user:
+        await message.answer("Amal bekor qilindi.", reply_markup=menu_user())
+    else:
+        await message.answer("Bosh menyu.", reply_markup=menu_login())
+
+
 @dp.message(Command("start"))
 async def start(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -111,14 +132,14 @@ async def start(message: types.Message, state: FSMContext):
 # --- LOGIN ---
 @dp.message(F.text == "🔑 Login")
 async def login_start(message: types.Message, state: FSMContext):
-    await message.answer("Username:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Username:", reply_markup=menu_back())
     await state.set_state(AppStates.login_user)
 
 
 @dp.message(AppStates.login_user)
 async def login_user_handler(message: types.Message, state: FSMContext):
     await state.update_data(username=message.text)
-    await message.answer("Password:")
+    await message.answer("Password:", reply_markup=menu_back())
     await state.set_state(AppStates.login_pass)
 
 
@@ -132,23 +153,25 @@ async def login_pass_handler(message: types.Message, state: FSMContext):
         await state.set_state(None)
     else:
         await message.answer("❌ Xato login yoki parol", reply_markup=menu_login())
+        await state.set_state(None)
 
 
 # --- CARD LINKING ---
 @dp.message(F.text == "💳 Karta ulash")
 async def card_start(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if not data.get("user_id"): return await message.answer("Avval login qiling!")
-    await message.answer("16 xonali karta raqami:")
+    if not data.get("user_id"): return await message.answer("Avval login qiling!", reply_markup=menu_login())
+    await message.answer("16 xonali karta raqami:", reply_markup=menu_back())
     await state.set_state(AppStates.card_number)
 
 
 @dp.message(AppStates.card_number)
 async def card_num_handler(message: types.Message, state: FSMContext):
     num = message.text.replace(" ", "")
-    if len(num) != 16: return await message.answer("Xato! 16 ta raqam bo'lishi shart.")
+    if len(num) != 16: return await message.answer("Xato! 16 ta raqam bo'lishi shart. Yoki orqaga qayting.",
+                                                   reply_markup=menu_back())
     await state.update_data(card_num=num)
-    await message.answer("Muddati (MM/YY):")
+    await message.answer("Muddati (MM/YY):", reply_markup=menu_back())
     await state.set_state(AppStates.card_expiry)
 
 
@@ -174,7 +197,7 @@ async def card_exp_handler(message: types.Message, state: FSMContext):
 async def my_cards(message: types.Message, state: FSMContext):
     data = await state.get_data()
     user = await get_user(data.get("user_id"))
-    if not user: return await message.answer("Login qiling")
+    if not user: return await message.answer("Login qiling", reply_markup=menu_login())
 
     cards = await get_cards(user)
     if not cards: return await message.answer("Kartalar yo'q")
@@ -183,7 +206,6 @@ async def my_cards(message: types.Message, state: FSMContext):
     text = "💳 **Sizning kartalaringiz:**\n\n"
     for c in cards:
         total += float(c.balance)
-        # Chiroyli formatlash
         bal = "{:,.2f}".format(float(c.balance)).replace(",", " ")
         text += f"🔹 `{c.card_number[:4]} **** **** {c.card_number[-4:]}`\n"
         text += f"💰 Balans: **{bal} UZS** | 📅 {c.expiry_date}\n\n"
@@ -200,27 +222,13 @@ async def show_updates(message: types.Message):
 
 @dp.callback_query(F.data == "v11")
 async def version_11(call: types.CallbackQuery):
-    msg = (
-        "🚀 **Versiya 1.1**\n\n"
-        "Boshlang'ich imkoniyatlar:\n"
-        "• Django bazasi bilan integratsiya.\n"
-        "• Kartalarni bazadan import qilish tizimi.\n"
-        "• Faqat administrativ boshqaruv mavjud edi."
-    )
+    msg = "🚀 **Versiya 1.1**\n\nBoshlang'ich imkoniyatlar: Django integratsiya va import tizimi."
     await call.message.edit_text(msg, parse_mode="Markdown", reply_markup=inline_updates())
 
 
 @dp.callback_query(F.data == "v12")
 async def version_12(call: types.CallbackQuery):
-    msg = (
-        "🌟 **Versiya 1.2 (Hozirgi)**\n\n"
-        "Yangi qo'shilgan imkoniyatlar:\n"
-        "• 🔑 **Login tizimi**: Foydalanuvchilar o'z profillariga kira oladi.\n"
-        "• 💳 **Karta ulash**: 16 xonali raqam va muddat orqali avtomatik biriktirish.\n"
-        "• 🗂 **Kartalarim**: Barcha ulangan kartalarni bitta ro'yxatda ko'rish.\n"
-        "• 💰 **Balans**: Real vaqtda har bir karta va umumiy balansni hisoblash.\n"
-        "• 🔄 **Update bo'limi**: Versiyalar tarixini kuzatish."
-    )
+    msg = "🌟 **Versiya 1.2**\n\nYangi: Login, Karta ulash, Balans va Update tizimi."
     await call.message.edit_text(msg, parse_mode="Markdown", reply_markup=inline_updates())
 
 

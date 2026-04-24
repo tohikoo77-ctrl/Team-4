@@ -20,7 +20,7 @@ MAX_AMOUNT = Decimal("50000000")
 ALLOWED_CURRENCIES = [643, 840]
 
 # ─── Telegram settings (filled by team member who owns the bot) ───────────────
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+TELEGRAM_BOT_TOKEN = '8693429932:AAH5lZbQJMrMJFSAJW5Z1sjIng-ailzMMS0'
 DEFAULT_CHAT_ID = 123456  # replace with real chat_id or fetch by phone
 
 

@@ -1,179 +1,234 @@
 import os
 import django
 import asyncio
+from datetime import datetime
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
 from asgiref.sync import sync_to_async
-from datetime import datetime
 
-# Django setup
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+# =========================
+# DJANGO INIT
+# =========================
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, get_user_model
 from src.models.cart import BankCard
 
-API_TOKEN = '8693429932:AAH5lZbQJMrMJFSAJW5Z1sjIng-ailzMMS0'
-bot = Bot(token=API_TOKEN)
+User = get_user_model()
+
+bot = Bot(token="8693429932:AAH5lZbQJMrMJFSAJW5Z1sjIng-ailzMMS0")
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# --- FSM States ---
+# =========================
+# STATES
+# =========================
 class AppStates(StatesGroup):
-    waiting_for_login_user = State()
-    waiting_for_login_pass = State()
-    waiting_for_card_number = State()
-    waiting_for_card_date = State()
+    login_user = State()
+    login_pass = State()
+    card_number = State()
+    card_expiry = State()
 
 
-# --- Keyboards ---
-def get_login_menu():
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔑 Login")]], resize_keyboard=True)
+# =========================
+# KEYBOARDS
+# =========================
+def menu_login():
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🔑 Login")]],
+        resize_keyboard=True
+    )
 
 
-def get_user_menu():
-    kb = [
-        [KeyboardButton(text="💳 Karta ulash"), KeyboardButton(text="🗂 Kartalarim")],
-        [KeyboardButton(text="💰 Umumiy balans")],
-        [KeyboardButton(text="🚪 Chiqish")]
-    ]
-    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
+def menu_user():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="💳 Karta ulash"), KeyboardButton(text="🗂 Kartalarim")],
+            [KeyboardButton(text="🔄 Update"), KeyboardButton(text="🚪 Chiqish")]
+        ],
+        resize_keyboard=True
+    )
 
 
-# --- DB Operations ---
+def inline_updates():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Versiya 1.1", callback_data="v11"),
+         InlineKeyboardButton(text="Versiya 1.2", callback_data="v12")]
+    ])
+
+
+# =========================
+# DB FUNCTIONS
+# =========================
 @sync_to_async
-def get_user_by_id(user_id):
+def get_user(user_id):
+    if not user_id: return None
     return User.objects.filter(id=user_id).first()
 
 
 @sync_to_async
-def get_user_cards(user):
-    # Foydalanuvchining barcha kartalarini olish
-    cards = BankCard.objects.filter(owner=user)
-    return list(cards)
+def link_card(user, card_num, exp):
+    try:
+        card = BankCard.objects.get(card_number=card_num)
+        if card.expiry_date != exp: return "expiry_error"
+        if card.owner: return "taken" if card.owner != user else "already"
+        card.owner = user
+        card.status = "active"
+        card.save()
+        return "success"
+    except BankCard.DoesNotExist:
+        return "not_found"
 
 
 @sync_to_async
-def link_card_to_user(user, card_num, exp_date):
-    # Kartani raqami va muddati orqali bazadan qidirish
-    card = BankCard.objects.filter(card_number=card_num, expiry_date=exp_date).first()
-    if card:
-        if card.owner is None:
-            card.owner = user
-            card.status = "active"
-            card.save()  # ADMIN PANELDA HAM KO'RINADI
-            return "success"
-        elif card.owner == user:
-            return "already_yours"
-        else:
-            return "already_owned"
-    return "not_found"
+def get_cards(user):
+    return list(BankCard.objects.filter(owner=user))
 
 
-# --- Handlers ---
+# =========================
+# HANDLERS
+# =========================
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
+async def start(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    if 'user_id' in data:
-        user = await get_user_by_id(data['user_id'])
-        await message.answer(f"Xush kelibsiz, {user.username}!", reply_markup=get_user_menu())
+    user = await get_user(data.get("user_id"))
+    if user:
+        await message.answer(f"Salom {user.username}", reply_markup=menu_user())
     else:
-        await message.answer("Tizimga kirish uchun Login qiling:", reply_markup=get_login_menu())
+        await message.answer("Tizimga kirish uchun Login qiling", reply_markup=menu_login())
 
 
+# --- LOGIN ---
 @dp.message(F.text == "🔑 Login")
 async def login_start(message: types.Message, state: FSMContext):
     await message.answer("Username:", reply_markup=ReplyKeyboardRemove())
-    await state.set_state(AppStates.waiting_for_login_user)
+    await state.set_state(AppStates.login_user)
 
 
-@dp.message(AppStates.waiting_for_login_user)
-async def login_user(message: types.Message, state: FSMContext):
-    await state.update_data(temp_user=message.text)
-    await message.answer("Parol:")
-    await state.set_state(AppStates.waiting_for_login_pass)
+@dp.message(AppStates.login_user)
+async def login_user_handler(message: types.Message, state: FSMContext):
+    await state.update_data(username=message.text)
+    await message.answer("Password:")
+    await state.set_state(AppStates.login_pass)
 
 
-@dp.message(AppStates.waiting_for_login_pass)
-async def login_pass(message: types.Message, state: FSMContext):
+@dp.message(AppStates.login_pass)
+async def login_pass_handler(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    user = await sync_to_async(authenticate)(username=data['temp_user'], password=message.text)
-
+    user = await sync_to_async(authenticate)(username=data["username"], password=message.text)
     if user:
-        await state.update_data(user_id=user.id)  # SESSiyani saqlash
-        await message.answer(f"✅ Login muvaffaqiyatli!", reply_markup=get_user_menu())
+        await state.update_data(user_id=user.id)
+        await message.answer("✔ Login muvaffaqiyatli!", reply_markup=menu_user())
         await state.set_state(None)
     else:
-        await message.answer("❌ Xato! Qayta urinib ko'ring:", reply_markup=get_login_menu())
+        await message.answer("❌ Xato login yoki parol", reply_markup=menu_login())
 
 
-# Karta ulash
+# --- CARD LINKING ---
 @dp.message(F.text == "💳 Karta ulash")
 async def card_start(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if not data.get("user_id"): return await message.answer("Avval login qiling!")
     await message.answer("16 xonali karta raqami:")
-    await state.set_state(AppStates.waiting_for_card_number)
+    await state.set_state(AppStates.card_number)
 
 
-@dp.message(AppStates.waiting_for_card_number)
-async def card_num(message: types.Message, state: FSMContext):
+@dp.message(AppStates.card_number)
+async def card_num_handler(message: types.Message, state: FSMContext):
     num = message.text.replace(" ", "")
-    if len(num) == 16:
-        await state.update_data(c_num=num)
-        await message.answer("Amal qilish muddati (YYYY-MM-DD):")
-        await state.set_state(AppStates.waiting_for_card_date)
-    else:
-        await message.answer("16 ta raqam bo'lishi kerak!")
+    if len(num) != 16: return await message.answer("Xato! 16 ta raqam bo'lishi shart.")
+    await state.update_data(card_num=num)
+    await message.answer("Muddati (MM/YY):")
+    await state.set_state(AppStates.card_expiry)
 
 
-@dp.message(AppStates.waiting_for_card_date)
-async def card_date(message: types.Message, state: FSMContext):
-    try:
-        exp_date = datetime.strptime(message.text, "%Y-%m-%d").date()
-        data = await state.get_data()
-        user = await get_user_by_id(data['user_id'])
+@dp.message(AppStates.card_expiry)
+async def card_exp_handler(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user = await get_user(data.get("user_id"))
+    result = await link_card(user, data["card_num"], message.text.strip())
 
-        res = await link_card_to_user(user, data['c_num'], exp_date)
-
-        if res == "success":
-            await message.answer("✅ Karta muvaffaqiyatli ulandi va admin panelda yangilandi!",
-                                 reply_markup=get_user_menu())
-        elif res == "already_yours":
-            await message.answer("ℹ️ Bu karta sizga allaqachon ulangan.")
-        elif res == "already_owned":
-            await message.answer("⚠️ Bu karta boshqa odamga tegishli.")
-        else:
-            await message.answer("❌ Karta topilmadi.")
-        await state.set_state(None)
-    except Exception as e:
-        await message.answer("Xato format! YYYY-MM-DD")
+    msgs = {
+        "success": "✅ Karta ulandi!",
+        "expiry_error": "❌ Sana noto'g'ri!",
+        "taken": "⚠️ Karta band!",
+        "already": "ℹ️ O'zingizniki",
+        "not_found": "❌ Topilmadi"
+    }
+    await message.answer(msgs.get(result, "Xato"), reply_markup=menu_user())
+    await state.set_state(None)
 
 
-# KARTALARIM RO'YXATI
+# --- VIEW CARDS & BALANCE ---
 @dp.message(F.text == "🗂 Kartalarim")
 async def my_cards(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    user = await get_user_by_id(data.get('user_id'))
-    cards = await get_user_cards(user)
+    user = await get_user(data.get("user_id"))
+    if not user: return await message.answer("Login qiling")
 
-    if cards:
-        text = "💳 Sizning kartalaringiz:\n\n"
-        for i, card in enumerate(cards, 1):
-            text += f"{i}. {card.card_number} | {card.balance} UZS\n"
-        await message.answer(text)
-    else:
-        await message.answer("Sizda hali ulangan kartalar yo'q.")
+    cards = await get_cards(user)
+    if not cards: return await message.answer("Kartalar yo'q")
+
+    total = 0
+    text = "💳 **Sizning kartalaringiz:**\n\n"
+    for c in cards:
+        total += float(c.balance)
+        # Chiroyli formatlash
+        bal = "{:,.2f}".format(float(c.balance)).replace(",", " ")
+        text += f"🔹 `{c.card_number[:4]} **** **** {c.card_number[-4:]}`\n"
+        text += f"💰 Balans: **{bal} UZS** | 📅 {c.expiry_date}\n\n"
+
+    text += f"━━━━━━━━━━━━━━\n💰 **Umumiy balans:** {'{:,.2f}'.format(total).replace(',', ' ')} UZS"
+    await message.answer(text, parse_mode="Markdown")
 
 
+# --- UPDATES SYSTEM ---
+@dp.message(F.text == "🔄 Update")
+async def show_updates(message: types.Message):
+    await message.answer("Bot versiyalari haqida ma'lumot:", reply_markup=inline_updates())
+
+
+@dp.callback_query(F.data == "v11")
+async def version_11(call: types.CallbackQuery):
+    msg = (
+        "🚀 **Versiya 1.1**\n\n"
+        "Boshlang'ich imkoniyatlar:\n"
+        "• Django bazasi bilan integratsiya.\n"
+        "• Kartalarni bazadan import qilish tizimi.\n"
+        "• Faqat administrativ boshqaruv mavjud edi."
+    )
+    await call.message.edit_text(msg, parse_mode="Markdown", reply_markup=inline_updates())
+
+
+@dp.callback_query(F.data == "v12")
+async def version_12(call: types.CallbackQuery):
+    msg = (
+        "🌟 **Versiya 1.2 (Hozirgi)**\n\n"
+        "Yangi qo'shilgan imkoniyatlar:\n"
+        "• 🔑 **Login tizimi**: Foydalanuvchilar o'z profillariga kira oladi.\n"
+        "• 💳 **Karta ulash**: 16 xonali raqam va muddat orqali avtomatik biriktirish.\n"
+        "• 🗂 **Kartalarim**: Barcha ulangan kartalarni bitta ro'yxatda ko'rish.\n"
+        "• 💰 **Balans**: Real vaqtda har bir karta va umumiy balansni hisoblash.\n"
+        "• 🔄 **Update bo'limi**: Versiyalar tarixini kuzatish."
+    )
+    await call.message.edit_text(msg, parse_mode="Markdown", reply_markup=inline_updates())
+
+
+# --- LOGOUT ---
 @dp.message(F.text == "🚪 Chiqish")
 async def logout(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer("Tizimdan chiqdingiz.", reply_markup=get_login_menu())
+    await message.answer("Chiqdingiz.", reply_markup=menu_login())
 
 
 async def main():

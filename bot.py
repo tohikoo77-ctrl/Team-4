@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from asgiref.sync import sync_to_async
 from datetime import datetime
+from .utils import TELEGRAM_BOT_TOKEN
 
 # Django setup
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
@@ -18,7 +19,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from src.models.cart import BankCard
 
-API_TOKEN = '8693429932:AAH5lZbQJMrMJFSAJW5Z1sjIng-ailzMMS0'
+API_TOKEN = str(TELEGRAM_BOT_TOKEN)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 

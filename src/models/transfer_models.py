@@ -1,5 +1,6 @@
 from django.db import models
 
+# ABDUVORIS
 
 class Transfer(models.Model):
     class State(models.TextChoices):

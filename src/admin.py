@@ -29,7 +29,7 @@ class BankCardAdmin(ImportExportModelAdmin):
     list_filter = ('status', 'expiry_date')
     search_fields = ('card_number', 'phone')
 
-    readonly_fields = ('balance',)
+
 
     def masked_card(self, obj):
         return "**** **** **** " + obj.card_number[-4:]

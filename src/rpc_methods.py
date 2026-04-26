@@ -2,6 +2,8 @@ import logging
 from datetime import datetime
 from decimal import Decimal
 
+# ABDUVORIS
+
 from jsonrpcserver import method, Result, Success, Error as RpcError
 from src.models.cart import BankCard
 
@@ -42,7 +44,7 @@ def _get_card(card_number: str):
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.create
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.create")
 def transfer__create(
         ext_id: str,
         sender_card_number: str,
@@ -77,7 +79,7 @@ def transfer__create(
 
         # 4. Validate sender card expiry format
         if not validate_card_expiry(sender_card_expiry):
-            return _rpc_error(32704, "Card expiry is not valid")
+            return _rpc_error(32704, "Card expiry is 1 not valid")
 
         # 5. Luhn check on sender card
         if not validate_card_luhn(sender_card_number):
@@ -89,11 +91,11 @@ def transfer__create(
             return _rpc_error(32705, "Card is not active")
 
         # 7. Sender card must be active
-        if not sender_card.is_active:
+        if sender_card.status != 'active':
             return _rpc_error(32705, "Card is not active")
 
         # 8. Sender card expiry must match
-        if sender_card.expiry != sender_card_expiry:
+        if sender_card.expiry_date != sender_card_expiry:
             return _rpc_error(32704, "Card expiry is not valid")
 
         # 9. Sender balance check
@@ -151,7 +153,7 @@ def transfer__create(
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.confirm
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.confirm")
 def transfer__confirm(ext_id: str, otp: str) -> Result:
     """
     Confirm transfer with OTP.
@@ -203,7 +205,7 @@ def transfer__confirm(ext_id: str, otp: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.cancel
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.cancel")
 def transfer__cancel(ext_id: str) -> Result:
     """
     Cancel a transfer (only if in 'created' state).
@@ -232,7 +234,7 @@ def transfer__cancel(ext_id: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.state
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.state")
 def transfer__state(ext_id: str) -> Result:
     """
     Return current state of a transfer.
@@ -253,7 +255,7 @@ def transfer__state(ext_id: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.history
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.history")
 def transfer__history(
         card_number: str = None,
         start_date: str = None,

@@ -19,7 +19,7 @@ class BankCardAdmin(ImportExportModelAdmin):
 
     list_display = (
         'masked_card',
-        'colored_balance',
+        'balance',
         'status_tag',
         'phone',
         'expiry_date',
@@ -36,17 +36,18 @@ class BankCardAdmin(ImportExportModelAdmin):
 
     masked_card.short_description = "Card"
 
-    def colored_balance(self, obj):
-        balance = Decimal(obj.balance or 0)
-        color = "green" if balance > 0 else "red"
 
-        # return format_html(
-        #     '<b style="color:{};">{:,.2f} UZS</b>',
-        #     color,
-        #     balance
-        # )
-
-    colored_balance.short_description = "Balance"
+    # def colored_balance(self, obj):
+    #     balance = Decimal(obj.balance or 0)
+    #     color = "green" if balance > 0 else "red"
+    #
+    #     # return format_html(
+    #     #     '<b style="color:{};">{:,.2f} UZS</b>',
+    #     #     color,
+    #     #     balance
+    #     # )
+    #
+    # colored_balance.short_description = "Balance"
 
     def status_tag(self, obj):
         colors = {

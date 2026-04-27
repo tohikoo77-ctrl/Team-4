@@ -21,6 +21,8 @@ from src.utils import (
     MAX_OTP_TRY,
 )
 
+from .models.transfer_models import Transfer
+
 # Assumes your Card model lives in a `cards` app — adjust import if different
 
 
@@ -155,43 +157,46 @@ def transfer__create(
 # ═════════════════════════════════════════════════════════════════════════════
 @method(name="transfer.confirm")
 def transfer__confirm(ext_id: str, otp: str) -> Result:
-    """
-    Confirm transfer with OTP.
-    JSON-RPC method name: transfer.confirm
-    """
     try:
         transfer = get_transfer_by_ext_id(ext_id)
         if not transfer:
             return _rpc_error(32700, "Ext id must be unique")
 
-        # Already processed
         if transfer.state == Transfer.State.CONFIRMED:
             return Success({"ext_id": ext_id, "state": transfer.state})
 
         if transfer.state == Transfer.State.CANCELLED:
             return _rpc_error(32713, "Method is not allowed")
 
-        # Try count exceeded
         if transfer.try_count >= MAX_OTP_TRY:
             return _rpc_error(32711, "Count of try is reached")
 
-        # Wrong OTP
         if transfer.otp != otp:
             transfer.try_count += 1
             transfer.save(update_fields=["try_count", "updated_at"])
-
             left = MAX_OTP_TRY - transfer.try_count
             if left <= 0:
-                logger.warning(f"transfer.confirm: ext_id={ext_id} blocked after max tries")
                 return _rpc_error(32711, "Count of try is reached")
-
-            logger.warning(f"transfer.confirm: wrong OTP for ext_id={ext_id}, left={left}")
             return _rpc_error(32712, f"OTP is wrong, left try count is {left}")
 
-        # ✅ Correct OTP — confirm
+
+        sender_card = BankCard.objects.get(card_number=transfer.sender_card_number)
+        receiver_card = BankCard.objects.get(card_number=transfer.receiver_card_number)
+
+        # Balans tekshirish
+        if sender_card.balance < transfer.sending_amount:
+            return _rpc_error(32702, "Balance is not enough")
+
+        # Balansni o'zgartirish
+        sender_card.balance -= transfer.sending_amount
+        receiver_card.balance += transfer.receiving_amount
+        sender_card.save()
+        receiver_card.save()
+
+        # Transferni tasdiqlash
         transfer.state = Transfer.State.CONFIRMED
         transfer.confirmed_at = datetime.now()
-        transfer.otp = None  # clear OTP after use
+        transfer.otp = None
         transfer.save(update_fields=["state", "confirmed_at", "otp", "updated_at"])
 
         logger.info(f"transfer.confirm: ext_id={ext_id} confirmed")

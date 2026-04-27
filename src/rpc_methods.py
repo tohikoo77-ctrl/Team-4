@@ -21,7 +21,7 @@ from src.utils import (
     MAX_OTP_TRY,
 )
 
-from .models.transfer_models import Transfer
+
 
 # Assumes your Card model lives in a `cards` app — adjust import if different
 

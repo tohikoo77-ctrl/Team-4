@@ -13,13 +13,14 @@ logger = logging.getLogger(__name__)
 # ─── Static exchange rates (base: UZS) ────────────────────────────────────────
 EXCHANGE_RATES = {
     643: Decimal("13.5"),   # 1 RUB = 13.5 UZS  (example)
-    860: Decimal("12700"),  # 1 USD = 12700 UZS  (example)
+    840: Decimal("12700"),  # 1 USD = 12700 UZS  (example)
+    860: Decimal("1"),
 }
 
 MAX_OTP_TRY = 3
 MIN_AMOUNT = Decimal("1000")
 MAX_AMOUNT = Decimal("50000000")
-ALLOWED_CURRENCIES = [643, 860]
+ALLOWED_CURRENCIES = [860, 840, 643]
 
 # ─── Telegram settings (filled by team member who owns the bot) ───────────────
 TELEGRAM_BOT_TOKEN = '8693429932:AAH5lZbQJMrMJFSAJW5Z1sjIng-ailzMMS0'

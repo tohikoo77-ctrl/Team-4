@@ -19,7 +19,7 @@ class BankCardAdmin(ImportExportModelAdmin):
 
     list_display = (
         'masked_card',
-        'balance',
+        'colored_balance',   # ← красивый баланс
         'status_tag',
         'phone',
         'expiry_date',
@@ -29,40 +29,34 @@ class BankCardAdmin(ImportExportModelAdmin):
     list_filter = ('status', 'expiry_date')
     search_fields = ('card_number', 'phone')
 
-
-
     def masked_card(self, obj):
         return "**** **** **** " + obj.card_number[-4:]
-
     masked_card.short_description = "Card"
 
-
-    # def colored_balance(self, obj):
-    #     balance = Decimal(obj.balance or 0)
-    #     color = "green" if balance > 0 else "red"
-    #
-    #     # return format_html(
-    #     #     '<b style="color:{};">{:,.2f} UZS</b>',
-    #     #     color,
-    #     #     balance
-    #     # )
-    #
-    # colored_balance.short_description = "Balance"
+    def colored_balance(self, obj):
+        balance = Decimal(obj.balance or 0)
+        color = "#28a745" if balance > 0 else "#dc3545"
+        # форматируем: 1000000 → 1,000,000.00
+        formatted = f"{balance:,.2f}"
+        return format_html(
+            '<b style="color:{}; font-size:14px;">{} UZS</b>',
+            color,
+            formatted
+        )
+    colored_balance.short_description = "Balans"
 
     def status_tag(self, obj):
         colors = {
-            'active': 'green',
-            'inactive': 'orange',
-            'expired': 'red',
-            'blocked': 'black',
+            'active': '#28a745',
+            'inactive': '#ffc107',
+            'expired': '#dc3545',
+            'blocked': '#343a40',
         }
-
         return format_html(
-            '<span style="background:{};color:white;padding:4px 8px;border-radius:6px;">{}</span>',
+            '<span style="background:{};color:white;padding:4px 10px;border-radius:6px;font-size:12px;">{}</span>',
             colors.get(obj.status, 'gray'),
             obj.status
         )
-
     status_tag.short_description = "Status"
 
 
@@ -88,6 +82,7 @@ class TransferAdmin(ImportExportModelAdmin):
         'sender_card_number',
         'receiver_card_number',
         'amount_display',
+        'receiving_display',  # ← qabul qilingan summa
         'state_tag',
     )
 
@@ -96,33 +91,47 @@ class TransferAdmin(ImportExportModelAdmin):
 
     readonly_fields = (
         'ext_id',
-        'receiving_amount'
+        'receiving_amount',
+        'created_at',
+        'updated_at',
     )
 
     def short_id(self, obj):
         return (obj.ext_id[:10] + "...") if obj.ext_id else "-"
-
     short_id.short_description = "ID"
 
     def amount_display(self, obj):
         curr_map = {643: 'RUB', 840: 'USD', 860: 'UZS'}
-        return f"{obj.sending_amount:,.2f} {curr_map.get(obj.currency, '')}"
+        # 5000000 → 5,000,000.00
+        formatted = f"{obj.sending_amount:,.2f}"
+        return format_html(
+            '<b style="color:#c62828;">{} {}</b>',
+            formatted,
+            curr_map.get(obj.currency, '')
+        )
+    amount_display.short_description = "Yuborilgan"
 
-    amount_display.short_description = "Amount"
+    def receiving_display(self, obj):
+        if obj.receiving_amount:
+            formatted = f"{obj.receiving_amount:,.2f}"
+            return format_html(
+                '<b style="color:#2e7d32;">{} UZS</b>',
+                formatted
+            )
+        return "-"
+    receiving_display.short_description = "Qabul qilingan"
 
     def state_tag(self, obj):
         colors = {
-            'created': 'blue',
-            'confirmed': 'green',
-            'cancelled': 'red',
+            'created': '#17a2b8',
+            'confirmed': '#28a745',
+            'cancelled': '#dc3545',
         }
-
         return format_html(
-            '<b style="color:{};">{}</b>',
+            '<b style="color:{};">● {}</b>',
             colors.get(obj.state, 'black'),
-            obj.state
+            obj.state.upper()
         )
-
     state_tag.short_description = "State"
 
 
@@ -136,7 +145,7 @@ class CustomUserAdmin(UserAdmin):
         'username',
         'phone_number',
         'workplace',
-        'salary',
+        'salary_display',   # ← красивая зарплата
         'is_married',
         'is_staff',
     )
@@ -165,3 +174,9 @@ class CustomUserAdmin(UserAdmin):
             )
         }),
     )
+
+    def salary_display(self, obj):
+        if obj.salary:
+            return f"{obj.salary:,.2f} UZS"
+        return "-"
+    salary_display.short_description = "Salary"

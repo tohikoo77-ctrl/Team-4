@@ -20,6 +20,7 @@ def transfer_rpc(request):
     POST /api/transfer/
     Content-Type: application/json
     """
+    print("RPC METHODS LOADED") 
     try:
         body = request.body.decode("utf-8")
         logger.debug(f"RPC request: {body}")
@@ -32,3 +33,4 @@ def transfer_rpc(request):
             {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}},
             status=400,
         )
+    

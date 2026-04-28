@@ -42,8 +42,8 @@ def _get_card(card_number: str):
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.create
 # ═════════════════════════════════════════════════════════════════════════════
-@method
-def transfer__create(
+@method(name="transfer.create")
+def transfer_create(
         ext_id: str,
         sender_card_number: str,
         sender_card_expiry: str,
@@ -89,7 +89,7 @@ def transfer__create(
             return _rpc_error(32705, "Card is not active")
 
         # 7. Sender card must be active
-        if not sender_card.is_active:
+        if not sender_card.status:
             return _rpc_error(32705, "Card is not active")
 
         # 8. Sender card expiry must match
@@ -144,6 +144,7 @@ def transfer__create(
         })
 
     except Exception as exc:
+        print(exc)
         logger.exception(f"transfer.create unexpected error: {exc}")
         return _rpc_error(32706, "Unknown error occurred")
 

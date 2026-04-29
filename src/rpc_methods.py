@@ -1,6 +1,12 @@
 import logging
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, DecimalException
+from django.utils import timezone
+from datetime import timedelta
+from src.models.credit import Credit  # Model joylashuvini tekshiring
+from src.services import calculate_credit # Hisob-kitob funksiyasi
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 from jsonrpcserver import method, Result, Success, Error as RpcError
 from src.models.cart import BankCard
@@ -317,3 +323,90 @@ def transfer__history(
         logger.exception(f"transfer.history unexpected error: {exc}")
         return _rpc_error(32706, "Unknown error occurred")
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+# credit.request
+# ═════════════════════════════════════════════════════════════════════════════
+@method(name="credit.request")
+def credit_request(username, amount, years):
+    try:
+        # 1. Userni tekshirish
+        try:
+            user = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return _rpc_error(1, "Bunday user mavjud emas")
+
+        # 2. Formatlarni tekshirish
+        try:
+            amount = Decimal(str(amount))
+            years = int(years)
+        except (ValueError, TypeError, DecimalException):
+            return _rpc_error(2, "Format xatosi: amount yoki years noto'g'ri")
+
+        # 3. Kredit hisob-kitobi
+        # calculate_credit (True, payment) yoki (False, "error message") qaytarishi kerak
+        ok, result = calculate_credit(user, years, amount)
+
+        # 4. Agar rad etilsa - BAZAGA YOZMAYMIZ, UUID BERMAYMIZ
+        if not ok:
+            return Success({
+                "approved": False,
+                "message": "Kredit rad etildi: Oylik maoshingiz miqdori ushbu kredit summasiga to'g'ri kelmaydi"
+            })
+
+        # 5. Agar tasdiqlansa - BAZAGA YOZAMIZ
+        monthly_payment = int(result)
+        credit = Credit.objects.create(
+            user=user,
+            amount=amount,
+            years=years,
+            monthly_payment=monthly_payment,
+            is_approved=True,
+            reason="Tasdiqlandi"
+        )
+
+        return Success({
+            "credit_id": str(credit.id),
+            "user": user.username,
+            "amount": float(credit.amount),
+            "approved": True,
+            "monthly_payment": monthly_payment,
+            "message": "Kredit muvaffaqiyatli tasdiqlandi"
+        })
+
+    except Exception as exc:
+        logger.error(f"CRITICAL ERROR in credit_request: {exc}")
+        return _rpc_error(32706, f"Tizimda xatolik: {str(exc)}") # Xatoni ko'rish uchun vaqtincha str(exc) qo'shdik
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# credit.cancel
+# ═════════════════════════════════════════════════════════════════════════════
+@method(name="credit.cancel")
+def credit_cancel(credit_id):
+    try:
+        try:
+            credit = Credit.objects.get(id=credit_id)
+        except (Credit.DoesNotExist, ValueError):
+            return _rpc_error(404, "Kredit topilmadi")
+
+        if credit.is_cancelled:
+            return _rpc_error(3, "Bu kredit allaqachon bekor qilingan")
+
+        if timezone.now() > credit.created_at + timedelta(days=3):
+            return _rpc_error(4, "Kreditni bekor qilish muddati (3 kun) o'tib ketgan")
+
+        credit.is_cancelled = True
+        credit.is_approved = False
+        credit.reason = "Foydalanuvchi tomonidan bekor qilindi"
+        credit.save()
+
+        return Success({
+            "credit_id": str(credit.id),
+            "status": "cancelled",
+            "message": "Kredit muvaffaqiyatli bekor qilindi"
+        })
+
+    except Exception as exc:
+        logger.error(f"CRITICAL ERROR in credit_cancel: {exc}")
+        return _rpc_error(32706, f"Tizimda xatolik: {str(exc)}")

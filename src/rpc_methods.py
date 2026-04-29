@@ -8,6 +8,8 @@ from src.services import calculate_credit # Hisob-kitob funksiyasi
 from django.contrib.auth import get_user_model
 User = get_user_model()
 
+# ABDUVORIS
+
 from jsonrpcserver import method, Result, Success, Error as RpcError
 from src.models.cart import BankCard
 
@@ -24,6 +26,8 @@ from src.utils import (
     MAX_AMOUNT,
     MAX_OTP_TRY,
 )
+
+
 
 # Assumes your Card model lives in a `cards` app — adjust import if different
 
@@ -48,7 +52,7 @@ def _get_card(card_number: str):
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.create
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.create")
 def transfer__create(
         ext_id: str,
         sender_card_number: str,
@@ -83,7 +87,7 @@ def transfer__create(
 
         # 4. Validate sender card expiry format
         if not validate_card_expiry(sender_card_expiry):
-            return _rpc_error(32704, "Card expiry is not valid")
+            return _rpc_error(32704, "Card expiry is 1 not valid")
 
         # 5. Luhn check on sender card
         if not validate_card_luhn(sender_card_number):
@@ -95,11 +99,11 @@ def transfer__create(
             return _rpc_error(32705, "Card is not active")
 
         # 7. Sender card must be active
-        if not sender_card.is_active:
+        if sender_card.status != 'active':
             return _rpc_error(32705, "Card is not active")
 
         # 8. Sender card expiry must match
-        if sender_card.expiry != sender_card_expiry:
+        if sender_card.expiry_date != sender_card_expiry:
             return _rpc_error(32704, "Card expiry is not valid")
 
         # 9. Sender balance check
@@ -157,45 +161,48 @@ def transfer__create(
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.confirm
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.confirm")
 def transfer__confirm(ext_id: str, otp: str) -> Result:
-    """
-    Confirm transfer with OTP.
-    JSON-RPC method name: transfer.confirm
-    """
     try:
         transfer = get_transfer_by_ext_id(ext_id)
         if not transfer:
             return _rpc_error(32700, "Ext id must be unique")
 
-        # Already processed
         if transfer.state == Transfer.State.CONFIRMED:
             return Success({"ext_id": ext_id, "state": transfer.state})
 
         if transfer.state == Transfer.State.CANCELLED:
             return _rpc_error(32713, "Method is not allowed")
 
-        # Try count exceeded
         if transfer.try_count >= MAX_OTP_TRY:
             return _rpc_error(32711, "Count of try is reached")
 
-        # Wrong OTP
         if transfer.otp != otp:
             transfer.try_count += 1
             transfer.save(update_fields=["try_count", "updated_at"])
-
             left = MAX_OTP_TRY - transfer.try_count
             if left <= 0:
-                logger.warning(f"transfer.confirm: ext_id={ext_id} blocked after max tries")
                 return _rpc_error(32711, "Count of try is reached")
-
-            logger.warning(f"transfer.confirm: wrong OTP for ext_id={ext_id}, left={left}")
             return _rpc_error(32712, f"OTP is wrong, left try count is {left}")
 
-        # ✅ Correct OTP — confirm
+
+        sender_card = BankCard.objects.get(card_number=transfer.sender_card_number)
+        receiver_card = BankCard.objects.get(card_number=transfer.receiver_card_number)
+
+        # Balans tekshirish
+        if sender_card.balance < transfer.sending_amount:
+            return _rpc_error(32702, "Balance is not enough")
+
+        # Balansni o'zgartirish
+        sender_card.balance -= transfer.sending_amount
+        receiver_card.balance += transfer.receiving_amount
+        sender_card.save()
+        receiver_card.save()
+
+        # Transferni tasdiqlash
         transfer.state = Transfer.State.CONFIRMED
         transfer.confirmed_at = datetime.now()
-        transfer.otp = None  # clear OTP after use
+        transfer.otp = None
         transfer.save(update_fields=["state", "confirmed_at", "otp", "updated_at"])
 
         logger.info(f"transfer.confirm: ext_id={ext_id} confirmed")
@@ -209,7 +216,7 @@ def transfer__confirm(ext_id: str, otp: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.cancel
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.cancel")
 def transfer__cancel(ext_id: str) -> Result:
     """
     Cancel a transfer (only if in 'created' state).
@@ -238,7 +245,7 @@ def transfer__cancel(ext_id: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.state
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.state")
 def transfer__state(ext_id: str) -> Result:
     """
     Return current state of a transfer.
@@ -259,7 +266,7 @@ def transfer__state(ext_id: str) -> Result:
 # ═════════════════════════════════════════════════════════════════════════════
 # transfer.history
 # ═════════════════════════════════════════════════════════════════════════════
-@method
+@method(name="transfer.history")
 def transfer__history(
         card_number: str = None,
         start_date: str = None,

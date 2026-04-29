@@ -316,3 +316,4 @@ def transfer__history(
     except Exception as exc:
         logger.exception(f"transfer.history unexpected error: {exc}")
         return _rpc_error(32706, "Unknown error occurred")
+
